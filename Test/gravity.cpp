@@ -1,14 +1,16 @@
+
 #include <iostream>
 #include "SFML/Graphics.hpp"
-#include <time.h>
+#include <chrono>
 #include <vector>
-#include<chrono>
-#include <deque>
+#include <cmath>
+#include <ratio>
 #define forn(i, s, n) for(int i=s; i<n; i++)
 #define vdebug(v) cout << #v << " = "; for(auto x: v){cout << x << ' ';}; cout << '\n';
 #define debug(x) cout << #x << " = " << x << '\n';
 
 using std::cout;
+using namespace std::chrono;
 
 class Body
 {
@@ -17,9 +19,9 @@ public:
 	std::vector<sf::Vertex> trail;
 	float mass;
 	sf::CircleShape shape;
-	clock_t t;
+	steady_clock::time_point t;
 	Body(float m, sf::Vector2f Pos, float radius) {
-		t = clock();
+		t = steady_clock::now();
 		mass = m;
 		pos = Pos;	
 		shape.setRadius(radius);
@@ -27,7 +29,7 @@ public:
 		trail = std::vector<sf::Vertex>(100, sf::Vertex(Pos, sf::Color::Red));
 	}			   
 	Body(float m, sf::Vector2f Pos, sf::Vector2f Vel, float radius) {
-		t = clock();
+		t = steady_clock::now();
 		mass = m;
 		pos = Pos; vel = Vel;
 		shape.setRadius(radius);
@@ -35,11 +37,12 @@ public:
 		trail = std::vector<sf::Vertex>(100, sf::Vertex(Pos, sf::Color::Red));
 	}
 	void updatePos(std::vector<Body> planets) {
-		clock_t dt = (clock() - t); // in milliseconds
-		t = clock();
+		duration<float, std::micro> diff = duration_cast<std::chrono::microseconds>(steady_clock::now() - t); // in microseconds
+		float dt = diff.count()/1000.f;
+        t = steady_clock::now();
 		sf::Vector2f newAccel = gravityAccel(planets);
-		pos += vel * float(dt) + accel * float(dt * dt) * 0.5f;
-		vel += 0.5f * float(dt) * (accel + newAccel);
+		pos += vel * dt + accel * (dt * dt) * 0.5f;
+		vel += 0.5f * (dt) * (accel + newAccel);
 		accel = newAccel;
 		shape.setPosition(pos);
 		trail.pop_back();
@@ -53,8 +56,8 @@ public:
 			}
 			sf::Vector2f diff = planet.pos - pos;
 			float rSquared = diff.y * diff.y + diff.x * diff.x;
-			sf::Vector2f direction = diff / sqrt(rSquared+10);
-			newAccel += direction * 6.67e-11f * planet.mass / (rSquared);
+			sf::Vector2f direction = diff / float(sqrt(rSquared+10));
+			newAccel += direction * planet.mass / (rSquared+50000);
 		}
 		return newAccel;
 	}
@@ -77,7 +80,7 @@ void updatePlanets(std::vector<Body>& planets) {
 	}
 }
 
-void keyBindings(sf::View& view, sf::RenderWindow& window, clock_t dt) {
+void keyBindings(sf::View& view, sf::RenderWindow& window, int dt) {
 	using sf::Keyboard;
 	float transFactor = 0.001f;
 	float zoomFactor = 0.005f;
@@ -96,14 +99,14 @@ void keyBindings(sf::View& view, sf::RenderWindow& window, clock_t dt) {
 		view.move(sf::Vector2f(0.f, 1.f*dt*transFactor*size));
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Equal)) {
-		view.zoom(1.f-float(dt)*zoomFactor);
+		view.zoom(1.f-dt*zoomFactor);
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Hyphen)) {
-		view.zoom(1.f+float(dt)*zoomFactor);
+		view.zoom(1.f+dt*zoomFactor);
 	}
 }
 
-void fpsCountUpdate(std::vector<clock_t>& times, clock_t dt, clock_t& total) {
+void fpsCountUpdate(std::vector<int>& times, int dt, int& total) {
 	total -= times.back();
 	total += dt;
 	times.pop_back();
@@ -121,9 +124,9 @@ int main() {
 	worldView.setSize(WIDTH, HEIGHT);
 	textView = worldView;
 	window.setView(worldView);
-	window.setFramerateLimit(250);
+	window.setFramerateLimit(244);
 	sf::Event e;
-	clock_t time = clock();
+	steady_clock::time_point time = steady_clock::now();
 
 	sf::Font font;
 	if (!font.loadFromFile("FiraCode-Regular.ttf")) {
@@ -134,18 +137,17 @@ int main() {
 	fpsCount.setString("hey");
 	fpsCount.setPosition(textView.getCenter() - textView.getSize() / 2.f);
 
-	Body planet0 = { 310000000000.f, sf::Vector2f(-100.f, 0.f), sf::Vector2f(0.f, .2f), 10.f };
-	Body planet1 = { 700000000000.f, sf::Vector2f(100.f, 0.f), sf::Vector2f(0.f, -.5f), 10.f };
-	Body planet2 = { 500000000000.f, sf::Vector2f(1200.f, 100.f), sf::Vector2f(0.f, -0.2f), 10.f };
+	Body planet0 = { 30.f, sf::Vector2f(-100.f, 0.f), sf::Vector2f(0.f, 0.f), 10.f };
+	Body planet1 = { 50.f, sf::Vector2f(100.f, 0.f), sf::Vector2f(0.f, -0.f), 10.f };
+	Body planet2 = { 100.f, sf::Vector2f(1200.f, 100.f), sf::Vector2f(0.f, -0.1f), 10.f };
 	planet0.setColour(sf::Color::Cyan);
 	std::vector<Body> planets = {planet0, planet1, planet2};
 	/*planets[0] = planet0;
 	planets[1] = planet1;*/
 
-	std::vector<clock_t> frameTimes(100, 10);
-	clock_t totalT = 100 * 10;
-	clock_t dt = clock() - time;
-	time = clock();
+	std::vector<int> frameTimes(100, 10);
+	int totalT = 100 * 10;
+	time = steady_clock::now();
 
 	while (window.isOpen()) {
 		while (window.pollEvent(e)) {
@@ -155,8 +157,9 @@ int main() {
 		}
 		//render
 		window.clear();
-		dt = clock() - time;
-		time = clock();
+        duration<int, std::milli> diff = duration_cast<std::chrono::milliseconds> (steady_clock::now() - time);
+		int dt = diff.count();
+		time = steady_clock::now();
 		keyBindings(worldView, window, dt);
 		window.setView(worldView);
 		updatePlanets(planets);
@@ -165,7 +168,7 @@ int main() {
 			window.draw(planet.shape);
 		}
 		fpsCountUpdate(frameTimes, dt, totalT);
-		fpsCount.setString(std::to_string(100000/totalT));
+		fpsCount.setString(std::to_string(100000/float(totalT)));
 		window.setView(textView);
 		//fpsCount.setPosition(0.f, 0.f);
 		window.draw(fpsCount);
