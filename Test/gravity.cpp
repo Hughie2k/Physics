@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include "SFML/Graphics.hpp"
 #include <chrono>
@@ -23,11 +22,11 @@ public:
 	Body(float m, sf::Vector2f Pos, float radius) {
 		t = steady_clock::now();
 		mass = m;
-		pos = Pos;	
+		pos = Pos;
 		shape.setRadius(radius);
 		shape.setOrigin(radius, radius);
 		trail = std::vector<sf::Vertex>(100, sf::Vertex(Pos, sf::Color::Red));
-	}			   
+	}
 	Body(float m, sf::Vector2f Pos, sf::Vector2f Vel, float radius) {
 		t = steady_clock::now();
 		mass = m;
@@ -36,11 +35,11 @@ public:
 		shape.setOrigin(radius, radius);
 		trail = std::vector<sf::Vertex>(100, sf::Vertex(Pos, sf::Color::Red));
 	}
-	void updatePos(std::vector<Body> planets) {
+	void updatePos(std::vector<sf::Vector2f> positions, std::vector<float> masses) {
 		duration<float, std::micro> diff = duration_cast<std::chrono::microseconds>(steady_clock::now() - t); // in microseconds
-		float dt = diff.count()/1000.f;
-        t = steady_clock::now();
-		sf::Vector2f newAccel = gravityAccel(planets);
+		float dt = diff.count() / 1000.f;
+		t = steady_clock::now();
+		sf::Vector2f newAccel = gravityAccel(positions, masses);
 		pos += vel * dt + accel * (dt * dt) * 0.5f;
 		vel += 0.5f * (dt) * (accel + newAccel);
 		accel = newAccel;
@@ -48,16 +47,18 @@ public:
 		trail.pop_back();
 		trail.insert(trail.begin(), sf::Vertex(pos, sf::Color::Red));
 	}
-	sf::Vector2f gravityAccel(std::vector<Body> planets) {
+	sf::Vector2f gravityAccel(std::vector<sf::Vector2f> positions, std::vector<float> masses) {
 		sf::Vector2f newAccel = { 0.f, 0.f };
-		for (Body planet : planets) {
-			if (planet.pos == pos) {
+		forn(i, 0, positions.size()) {
+			sf::Vector2f position = positions[i];
+			float otherMass = masses[i];
+			if (position == pos) {
 				continue;
 			}
-			sf::Vector2f diff = planet.pos - pos;
+			sf::Vector2f diff = position - pos;
 			float rSquared = diff.y * diff.y + diff.x * diff.x;
-			sf::Vector2f direction = diff / float(sqrt(rSquared+10));
-			newAccel += direction * planet.mass / (rSquared+50000);
+			sf::Vector2f direction = diff / float(sqrt(rSquared + 10));
+			newAccel += direction * otherMass / (rSquared + 500);
 		}
 		return newAccel;
 	}
@@ -66,7 +67,7 @@ public:
 		int isRight = pos.x > right;
 		int isAbove = pos.y < top;
 		int isBellow = pos.y > bottom;
-		return sf::Vector2f(isRight - isLeft, isBellow - isAbove); 
+		return sf::Vector2f(isRight - isLeft, isBellow - isAbove);
 	}
 	void setColour(sf::Color colour) {
 		shape.setFillColor(colour);
@@ -74,9 +75,15 @@ public:
 };
 
 void updatePlanets(std::vector<Body>& planets) {
+	std::vector<sf::Vector2f> positions(planets.size());
+	std::vector<float> masses(planets.size());
+	forn(i, 0, planets.size()) {
+		positions[i] = planets[i].pos;
+		masses[i] = planets[i].mass;
+	}
 	//time_t t = clock();
 	for (Body& planet : planets) {
-		planet.updatePos(planets);
+		planet.updatePos(positions, masses);
 	}
 }
 
@@ -87,22 +94,22 @@ void keyBindings(sf::View& view, sf::RenderWindow& window, int dt) {
 	float xSize = view.getSize().x; float ySize = view.getSize().y;
 	float size = sqrt(xSize * xSize + ySize * ySize);
 	if (Keyboard::isKeyPressed(Keyboard::Left)) {
-		view.move(sf::Vector2f(-1.f*dt*transFactor*size, 0.f));
+		view.move(sf::Vector2f(-1.f * dt * transFactor * size, 0.f));
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Right)) {
-		view.move(sf::Vector2f(1.f*dt*transFactor*size, 0.f));
+		view.move(sf::Vector2f(1.f * dt * transFactor * size, 0.f));
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Up)) {
-		view.move(sf::Vector2f(0.f, -1.f*dt*transFactor*size));
+		view.move(sf::Vector2f(0.f, -1.f * dt * transFactor * size));
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Down)) {
-		view.move(sf::Vector2f(0.f, 1.f*dt*transFactor*size));
+		view.move(sf::Vector2f(0.f, 1.f * dt * transFactor * size));
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Equal)) {
-		view.zoom(1.f-dt*zoomFactor);
+		view.zoom(1.f - dt * zoomFactor);
 	}
 	if (Keyboard::isKeyPressed(Keyboard::Hyphen)) {
-		view.zoom(1.f+dt*zoomFactor);
+		view.zoom(1.f + dt * zoomFactor);
 	}
 }
 
@@ -113,7 +120,13 @@ void fpsCountUpdate(std::vector<int>& times, int dt, int& total) {
 	times.insert(times.begin(), dt);
 }
 
-
+sf::Vector2f momentum(std::vector<Body> planets) {
+	sf::Vector2f total;
+	for (Body planet : planets) {
+		total += planet.vel * planet.mass;
+	}
+	return total;
+}
 
 int main() {
 	const short int WIDTH = 1000, HEIGHT = 600;
@@ -136,12 +149,18 @@ int main() {
 	fpsCount.setFont(font);
 	fpsCount.setString("hey");
 	fpsCount.setPosition(textView.getCenter() - textView.getSize() / 2.f);
+	sf::Text momentumCount;
+	momentumCount.setFont(font);
+	momentumCount.setPosition(textView.getCenter() - sf::Vector2f(textView.getSize().x, -textView.getSize().y + 100)/2.f);
 
 	Body planet0 = { 30.f, sf::Vector2f(-100.f, 0.f), sf::Vector2f(0.f, 0.f), 10.f };
 	Body planet1 = { 50.f, sf::Vector2f(100.f, 0.f), sf::Vector2f(0.f, -0.f), 10.f };
-	Body planet2 = { 100.f, sf::Vector2f(1200.f, 100.f), sf::Vector2f(0.f, -0.1f), 10.f };
+	Body planet2 = { 100.f, sf::Vector2f(1200.f, 100.f), sf::Vector2f(0.f, -0.f), 10.f };
+	Body planet3 = { 100.f, sf::Vector2f(1200.f, 0.f), sf::Vector2f(0.f, 0.f), 10.f };
+	Body planet4 = { 200.f, sf::Vector2f(1000.f, 100.f), sf::Vector2f(0.f, -0.1f), 10.f };
 	planet0.setColour(sf::Color::Cyan);
-	std::vector<Body> planets = {planet0, planet1, planet2};
+	planet4.setColour(sf::Color::Red);
+	std::vector<Body> planets = { planet0, planet1, planet2, planet3, planet4 };
 	/*planets[0] = planet0;
 	planets[1] = planet1;*/
 
@@ -157,7 +176,7 @@ int main() {
 		}
 		//render
 		window.clear();
-        duration<int, std::milli> diff = duration_cast<std::chrono::milliseconds> (steady_clock::now() - time);
+		duration<int, std::milli> diff = duration_cast<std::chrono::milliseconds> (steady_clock::now() - time);
 		int dt = diff.count();
 		time = steady_clock::now();
 		keyBindings(worldView, window, dt);
@@ -168,10 +187,13 @@ int main() {
 			window.draw(planet.shape);
 		}
 		fpsCountUpdate(frameTimes, dt, totalT);
-		fpsCount.setString(std::to_string(100000/float(totalT)));
+		fpsCount.setString(std::to_string(100000 / float(totalT)));
+		sf::Vector2f momentumVector = momentum(planets);
+		momentumCount.setString("Px=" + std::to_string(momentumVector.x) + "Py=" + std::to_string(momentumVector.y));
 		window.setView(textView);
 		//fpsCount.setPosition(0.f, 0.f);
 		window.draw(fpsCount);
+		window.draw(momentumCount);
 		window.display();
 	}
 }
